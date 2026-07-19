@@ -23,10 +23,12 @@
         }
     });
 
-    // Global AJAX error interceptor for unauthorized requests (401/403)
+    // Global AJAX error interceptor for unauthorized requests (401/403).
+    // Only react when a session token actually existed — anonymous visitors on the
+    // landing page should never see a "session expired" warning.
     $(document).ajaxError(function (event, xhr, settings) {
         if (xhr.status === 401 || xhr.status === 403) {
-            if (settings.url.indexOf('login') === -1) {
+            if (settings.url.indexOf('login') === -1 && localStorage.getItem('token')) {
                 localStorage.removeItem('token');
                 Swal.fire({
                     title: 'Unauthorized Action',
@@ -49,7 +51,10 @@
         setupEmailModuleHandlers();
         setupProfileHandlers();
         setupTemplateHandlers();
-        loadTemplates(null, false);
+        // Templates require authentication — skip the call for anonymous visitors
+        if (localStorage.getItem('token')) {
+            loadTemplates(null, false);
+        }
     });
 
     function loadPublicStats() {
@@ -1484,12 +1489,20 @@
     function retrySingleLogByIndex(index) {
         const log = historyLogsData[index];
         if (!log) return;
-        retrySingleLog(log.recipient_email, log.subject, log.message, log.employee);
+        // Pass the original sender along — without it the backend cannot send at all
+        const senderId = log.sender ? log.sender.id : null;
+        retrySingleLog(log.recipient_email, log.subject, log.message, log.employee, senderId);
     }
 
-    function retrySingleLog(recipientEmail, subject, message, employeeId) {
+    function retrySingleLog(recipientEmail, subject, message, employeeId, senderId) {
+        if (!senderId) {
+            Swal.fire('Cannot Retry', 'This log has no sender email attached, so it cannot be re-sent.', 'warning');
+            return;
+        }
+
         const payload = {
             employee: employeeId,
+            sender: senderId,
             recipient_email: recipientEmail,
             subject: subject,
             message: message
@@ -1509,12 +1522,18 @@
             type: 'POST',
             data: JSON.stringify(payload),
             contentType: 'application/json',
-            success: function () {
-                Swal.fire('Resent Successfully', 'The email has been queued and sent.', 'success');
+            success: function (response) {
+                // The API returns 201 even when delivery fails — check the recorded status
+                if (response && response.status === 'Sent') {
+                    Swal.fire('Resent Successfully', 'The email has been queued and sent.', 'success');
+                } else {
+                    Swal.fire('Retry Failed', 'The email could not be delivered. Please check the sender credentials and try again.', 'error');
+                }
                 loadHistoryLogs();
             },
             error: function (xhr) {
-                Swal.fire('Retry Failed', 'An error occurred during re-transmission.', 'error');
+                const msg = formatApiErrors(xhr, 'An error occurred during re-transmission.');
+                Swal.fire('Retry Failed', msg, 'error');
             }
         });
     }

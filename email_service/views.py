@@ -3,6 +3,7 @@ import mimetypes
 import os
 
 from rest_framework import viewsets
+from django.conf import settings
 from django.utils import timezone
 from django.core.mail import EmailMessage, get_connection
 
@@ -52,15 +53,20 @@ class EmailLogViewSet(viewsets.ModelViewSet):
 
             return
 
-        # Create SMTP connection using sender credentials
-        connection = get_connection(
-            backend="django.core.mail.backends.smtp.EmailBackend",
-            host="smtp.gmail.com",
-            port=587,
-            username=sender.email_address,
-            password=sender.password,
-            use_tls=True,
-        )
+        # Create SMTP connection using sender credentials.
+        # When email credentials are absent, settings.py configures the console
+        # backend for development — honour that instead of forcing real SMTP.
+        if settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
+            connection = get_connection(
+                backend="django.core.mail.backends.smtp.EmailBackend",
+                host="smtp.gmail.com",
+                port=587,
+                username=sender.email_address,
+                password=sender.password,
+                use_tls=True,
+            )
+        else:
+            connection = get_connection()
 
         # Create email
         email_message = EmailMessage(

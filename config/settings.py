@@ -97,7 +97,8 @@ DATABASES = {
     'default': dj_database_url.config(
         default=DATABASE_URL,
         conn_max_age=600,
-        ssl_require=True
+        # Enforce SSL for remote Postgres; sqlite (local dev) does not support it
+        ssl_require=DATABASE_URL.startswith('postgres')
     )
 }
 
