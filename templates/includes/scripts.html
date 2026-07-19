@@ -63,6 +63,7 @@
             },
             error: function() {
                 console.error("Failed to retrieve public statistics.");
+                $('#statEmployeesSynced, #statSentToday, #statDeliveryRate').text('--');
             }
         });
     }
@@ -506,6 +507,9 @@
                 if (callback) callback(data);
             },
             error: function () {
+                if (shouldRender) {
+                    setTableMessage('#tableTemplates', 'Could not load templates. Please check your connection and try again.', 4);
+                }
                 Swal.fire('Error', 'Failed to retrieve email templates.', 'error');
             }
         });
@@ -519,7 +523,7 @@
 
         if (list.length === 0) {
             table.row.add([
-                '<span class="text-muted">No templates available.</span>',
+                '<span class="text-muted">No templates yet. Click "Create Template" to add your first one.</span>',
                 '',
                 '',
                 ''
@@ -689,6 +693,9 @@
             if (callback) callback(globalDepartments);
         }).fail(function () {
             if (globalDepartments.length === 0) {
+                if (shouldRender) {
+                    setTableMessage('#tableDepts', 'Could not load departments. Please check your connection and try again.', 4);
+                }
                 Swal.fire('Error', 'Failed to retrieve department records.', 'error');
             }
         });
@@ -700,7 +707,7 @@
 
         if (departments.length === 0) {
             table.row.add([
-                '<span class="text-muted">No departments found.</span>',
+                '<span class="text-muted">No departments found. Click "New Department" to create one.</span>',
                 '',
                 '',
                 ''
@@ -815,6 +822,7 @@
             renderEmployeesTable(globalEmployees);
         }).fail(function () {
             if (globalEmployees.length === 0) {
+                setTableMessage('#tableEmployees', 'Could not load employees. Please check your connection and try again.', 5);
                 Swal.fire('Error', 'Failed to retrieve employee directory.', 'error');
             }
         });
@@ -826,7 +834,7 @@
 
         if (employees.length === 0) {
             table.row.add([
-                '<span class="text-muted">No employees found.</span>',
+                '<span class="text-muted">No employees found. Click "Add New Employee" to create the first record.</span>',
                 '',
                 '',
                 '',
@@ -1075,6 +1083,7 @@
             populateSenderEmailDropdown();
             renderSendEmailEmployeeList(globalEmployees);
         }).fail(function () {
+            $('#view-send-email .recipient-list').html('<div class="text-center text-muted py-4">Could not load employees. Please check your connection and try again.</div>');
             Swal.fire('Error', 'Failed to load email panel data.', 'error');
         });
     }
@@ -1093,7 +1102,7 @@
         container.empty();
 
         if (employees.length === 0) {
-            container.html('<div class="text-center text-muted py-4">No employees registered.</div>');
+            container.html('<div class="text-center text-muted py-4">No employees registered yet. Add employees first, then come back to send them emails.</div>');
             return;
         }
 
@@ -1303,6 +1312,7 @@
     // Loop and trigger individual email dispatches to backend endpoint sequentially
     async function sendBatchEmails(subjectTpl, messageTpl, senderId) {
         let successCount = 0;
+        const failedRecipients = [];
         const total = selectedEmployeeIds.length;
 
         Swal.fire({
@@ -1367,9 +1377,11 @@
                 if (response && response.status === 'Sent') {
                     successCount++;
                 } else {
+                    failedRecipients.push(emp.email);
                     console.error("Transmission failed for " + emp.email + ": status is " + (response ? response.status : 'unknown'));
                 }
             } catch (err) {
+                failedRecipients.push(emp.email);
                 console.error("Failed to send email to " + emp.email, err);
             } finally {
                 processedCount++;
@@ -1380,11 +1392,21 @@
         await Promise.all(emailPromises);
 
         Swal.close();
-        Swal.fire({
-            title: 'Transmission Complete',
-            text: `Successfully dispatched ${successCount} out of ${total} emails.`,
-            icon: successCount === total ? 'success' : 'warning'
-        });
+        if (failedRecipients.length > 0) {
+            Swal.fire({
+                title: 'Transmission Finished With Errors',
+                html: `Successfully dispatched ${successCount} out of ${total} emails.<br><br>` +
+                    `<b>Failed recipients:</b><br>${failedRecipients.join('<br>')}<br><br>` +
+                    `You can re-send failed emails from the History page.`,
+                icon: 'warning'
+            });
+        } else {
+            Swal.fire({
+                title: 'Transmission Complete',
+                text: `Successfully dispatched ${successCount} out of ${total} emails.`,
+                icon: 'success'
+            });
+        }
 
         // Reset fields
         selectedEmployeeIds = [];
@@ -1406,6 +1428,7 @@
                 renderHistoryTable(data);
             },
             error: function () {
+                setTableMessage('#tableHistory', 'Could not load history. Please check your connection and try again.', 6);
                 Swal.fire('Error', 'Failed to retrieve audit log history.', 'error');
             }
         });
@@ -1424,7 +1447,7 @@
 
         if (logs.length === 0) {
             table.row.add([
-                '<span class="text-muted">No history found.</span>',
+                '<span class="text-muted">No emails sent yet. Emails you send will appear here.</span>',
                 '',
                 '',
                 '',
