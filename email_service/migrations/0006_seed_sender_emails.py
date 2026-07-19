@@ -1,24 +1,27 @@
 # Generated migration to seed sender emails
 
+import os
+
 from django.db import migrations
 
 
 def seed_sender_emails(apps, schema_editor):
     SenderEmail = apps.get_model('email_service', 'SenderEmail')
-    
-    # Create sender emails if they don't exist
+
+    # Create sender emails if they don't exist.
+    # App passwords come from environment variables — never hardcode credentials.
     SenderEmail.objects.get_or_create(
         email_address='ceerasHRmanager@gmail.com',
         defaults={
-            'password': 'dpgp czwr mcza sfao',
+            'password': os.environ.get('SENDER_HR_APP_PASSWORD', ''),
             'is_active': True
         }
     )
-    
+
     SenderEmail.objects.get_or_create(
         email_address='ceerastechsupport@gmail.com',
         defaults={
-            'password': 'hkqo zjcj hanp oljs',
+            'password': os.environ.get('SENDER_SUPPORT_APP_PASSWORD', ''),
             'is_active': True
         }
     )
