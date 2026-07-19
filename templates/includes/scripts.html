@@ -96,6 +96,51 @@
         table.draw();
     }
 
+    // ==================== CLIENT-SIDE VALIDATION HELPERS ====================
+    function isValidEmail(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+
+    function isValidPhone(value) {
+        return /^\d{10}$/.test((value || '').replace(/[\s()-]/g, ''));
+    }
+
+    // Convert DRF field error responses into a friendly message, with special
+    // handling for duplicate/unique constraint errors (employee_id, email, etc.)
+    function formatApiErrors(xhr, fallback) {
+        const data = xhr.responseJSON;
+        if (!data) return fallback;
+        if (typeof data === 'string') return data;
+
+        const labels = {
+            employee_id: 'Employee ID',
+            department: 'Department',
+            first_name: 'First Name',
+            last_name: 'Last Name',
+            email: 'Email',
+            phone: 'Phone Number',
+            designation: 'Designation',
+            salary: 'Salary',
+            joining_date: 'Joining Date',
+            department_name: 'Department Name',
+            description: 'Description',
+            username: 'Username',
+            recipient_email: 'Recipient Email',
+            subject: 'Subject',
+            message: 'Message'
+        };
+
+        const lines = Object.keys(data).map(key => {
+            const text = Array.isArray(data[key]) ? data[key].join(' ') : String(data[key]);
+            const label = labels[key] || key;
+            if (/already exists|must be unique|unique/i.test(text)) {
+                return `This ${label} is already in use. Please enter a different ${label.toLowerCase()}.`;
+            }
+            return `${label}: ${text}`;
+        });
+        return lines.join('<br>') || fallback;
+    }
+
     function setupUiHandlers() {
         $('#toggleLoginPassword').on('click', function () {
             const input = $('#loginPassword');
@@ -159,8 +204,13 @@
     // Handle Login Submission
     function handleSystemLogin(event) {
         event.preventDefault();
-        const username = $('#loginEmail').val();
+        const username = ($('#loginEmail').val() || '').trim();
         const password = $('#loginPassword').val();
+
+        if (!username || !password) {
+            Swal.fire('Missing Credentials', 'Please enter both username and password.', 'warning');
+            return;
+        }
 
         $.ajax({
             url: API_BASE + 'login/',
@@ -351,6 +401,11 @@
                 return;
             }
 
+            if (profile.email && !isValidEmail(profile.email)) {
+                Swal.fire('Invalid Email', 'Please enter a valid email address (e.g. name@company.com).', 'warning');
+                return;
+            }
+
             $.ajax({
                 url: API_BASE + 'profile/',
                 type: 'PUT',
@@ -365,10 +420,7 @@
                     Swal.fire('Profile Updated', response.message || 'Profile details updated.', 'success');
                 },
                 error: function (xhr) {
-                    let msg = 'Could not update profile.';
-                    if (xhr.responseJSON) {
-                        msg = Object.keys(xhr.responseJSON).map(key => `${key}: ${xhr.responseJSON[key]}`).join('<br>');
-                    }
+                    const msg = formatApiErrors(xhr, 'Could not update profile.');
                     Swal.fire('Update Failed', msg, 'error');
                 }
             });
@@ -411,10 +463,7 @@
                     Swal.fire('Password Updated', response.message || 'Password changed successfully.', 'success');
                 },
                 error: function (xhr) {
-                    let msg = 'Could not change password.';
-                    if (xhr.responseJSON) {
-                        msg = Object.keys(xhr.responseJSON).map(key => `${key}: ${xhr.responseJSON[key]}`).join('<br>');
-                    }
+                    const msg = formatApiErrors(xhr, 'Could not change password.');
                     Swal.fire('Password Change Failed', msg, 'error');
                 }
             });
@@ -582,8 +631,9 @@
                     $('#formAddTemplate')[0].reset();
                     loadTemplates();
                 },
-                error: function () {
-                    Swal.fire('Error', 'Failed to save the template.', 'error');
+                error: function (xhr) {
+                    const msg = formatApiErrors(xhr, 'Failed to save the template.');
+                    Swal.fire('Could Not Save Template', msg, 'error');
                 }
             });
         });
@@ -906,16 +956,42 @@
             e.preventDefault();
             const id = $('#empId').val();
 
+            const employeeId = ($('#empEmployeeId').val() || '').trim();
+            const department = $('#empDepartment').val();
+            const firstName = ($('#empFirstName').val() || '').trim();
+            const lastName = ($('#empLastName').val() || '').trim();
+            const email = ($('#empEmail').val() || '').trim();
+            const phone = ($('#empPhone').val() || '').trim();
+            const designation = $('#empDesignation').val();
+            const salary = $('#empSalary').val();
+            const joiningDate = $('#empJoiningDate').val();
+
+            // Client-side validation before hitting the API
+            if (!employeeId || !department || !firstName || !lastName || !email || !phone || !designation || !salary || !joiningDate) {
+                Swal.fire('Missing Details', 'Please fill in all required fields before saving.', 'warning');
+                return;
+            }
+
+            if (!isValidEmail(email)) {
+                Swal.fire('Invalid Email', 'Please enter a valid email address (e.g. name@company.com).', 'warning');
+                return;
+            }
+
+            if (!isValidPhone(phone)) {
+                Swal.fire('Invalid Phone Number', 'Phone number must be exactly 10 digits.', 'warning');
+                return;
+            }
+
             const payload = {
-                employee_id: $('#empEmployeeId').val(),
-                department: parseInt($('#empDepartment').val()),
-                first_name: $('#empFirstName').val(),
-                last_name: $('#empLastName').val(),
-                email: $('#empEmail').val(),
-                phone: $('#empPhone').val(),
-                designation: $('#empDesignation').val(),
-                salary: parseFloat($('#empSalary').val()),
-                joining_date: $('#empJoiningDate').val(),
+                employee_id: employeeId,
+                department: parseInt(department),
+                first_name: firstName,
+                last_name: lastName,
+                email: email,
+                phone: phone,
+                designation: designation,
+                salary: parseFloat(salary),
+                joining_date: joiningDate,
                 status: $('#empStatus').is(':checked')
             };
 
@@ -933,11 +1009,8 @@
                     loadEmployees();
                 },
                 error: function (xhr) {
-                    let msg = 'Validation constraints violation occurred.';
-                    if (xhr.responseJSON) {
-                        msg = Object.keys(xhr.responseJSON).map(key => `${key}: ${xhr.responseJSON[key]}`).join('<br>');
-                    }
-                    Swal.fire('Error', msg, 'error');
+                    const msg = formatApiErrors(xhr, 'Could not save the employee record. Please review the details and try again.');
+                    Swal.fire('Could Not Save Employee', msg, 'error');
                 }
             });
         });
@@ -945,9 +1018,18 @@
         // Department creation
         $('#formAddDept').on('submit', function (e) {
             e.preventDefault();
+            const departmentName = ($('#deptName').val() || '').trim();
+            const description = ($('#deptDescription').val() || '').trim();
+
+            // Client-side validation before hitting the API
+            if (!departmentName || !description) {
+                Swal.fire('Missing Details', 'Department name and description are required.', 'warning');
+                return;
+            }
+
             const payload = {
-                department_name: $('#deptName').val(),
-                description: $('#deptDescription').val()
+                department_name: departmentName,
+                description: description
             };
 
             $.ajax({
@@ -962,11 +1044,8 @@
                     loadDepartments();
                 },
                 error: function (xhr) {
-                    let msg = 'Validation error occurred.';
-                    if (xhr.responseJSON) {
-                        msg = Object.keys(xhr.responseJSON).map(key => `${key}: ${xhr.responseJSON[key]}`).join('<br>');
-                    }
-                    Swal.fire('Failed', msg, 'error');
+                    const msg = formatApiErrors(xhr, 'Could not create the department. Please review the details and try again.');
+                    Swal.fire('Could Not Create Department', msg, 'error');
                 }
             });
         });
@@ -1142,8 +1221,15 @@
                 return;
             }
 
-            const baseSubject = $('#emailSubject').val();
-            const baseMessage = $('#emailMessage').val();
+            const baseSubject = ($('#emailSubject').val() || '').trim();
+            const baseMessage = ($('#emailMessage').val() || '').trim();
+
+            // Client-side validation before dispatching the batch
+            if (!baseSubject || !baseMessage) {
+                Swal.fire('Missing Details', 'Please enter a subject and message before sending.', 'warning');
+                return;
+            }
+
             const senderEmail = globalSenderEmails.find(s => s.id == senderId);
 
             Swal.fire({
